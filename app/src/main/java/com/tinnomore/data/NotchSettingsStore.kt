@@ -23,9 +23,10 @@ private val Context.notchDataStore by preferencesDataStore(name = "notch_setting
 class NotchSettingsStore(private val context: Context) {
 
     private object Keys {
-        val ENABLED  = booleanPreferencesKey("global_notch_enabled")
-        val FREQ_HZ  = intPreferencesKey("global_notch_freq_hz")
-        val DEPTH_DB = floatPreferencesKey("global_notch_depth_db")
+        val ENABLED       = booleanPreferencesKey("global_notch_enabled")
+        val FREQ_HZ       = intPreferencesKey("global_notch_freq_hz")
+        val DEPTH_DB      = floatPreferencesKey("global_notch_depth_db")
+        val WIDTH_OCTAVES = floatPreferencesKey("global_notch_width_octaves")
     }
 
     val enabled: Flow<Boolean> =
@@ -37,6 +38,9 @@ class NotchSettingsStore(private val context: Context) {
     val depthDb: Flow<Float> =
         context.notchDataStore.data.map { it[Keys.DEPTH_DB] ?: -24f }
 
+    val widthOctaves: Flow<Float> =
+        context.notchDataStore.data.map { it[Keys.WIDTH_OCTAVES] ?: 1f }
+
     suspend fun setEnabled(value: Boolean) {
         context.notchDataStore.edit { it[Keys.ENABLED] = value }
     }
@@ -47,5 +51,9 @@ class NotchSettingsStore(private val context: Context) {
 
     suspend fun setDepth(db: Float) {
         context.notchDataStore.edit { it[Keys.DEPTH_DB] = db }
+    }
+
+    suspend fun setWidthOctaves(octaves: Float) {
+        context.notchDataStore.edit { it[Keys.WIDTH_OCTAVES] = octaves }
     }
 }

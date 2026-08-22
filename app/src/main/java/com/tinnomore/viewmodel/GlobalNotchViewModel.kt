@@ -35,6 +35,9 @@ class GlobalNotchViewModel(application: Application) : AndroidViewModel(applicat
     val depthDb: StateFlow<Float> = store.depthDb
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), -24f)
 
+    val widthOctaves: StateFlow<Float> = store.widthOctaves
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 1f)
+
     /** Activa/desactiva el notch global y arranca/detiene el foreground service. */
     fun setEnabled(value: Boolean) {
         if (!isSupported) return
@@ -42,7 +45,7 @@ class GlobalNotchViewModel(application: Application) : AndroidViewModel(applicat
             store.setEnabled(value)
             val app = getApplication<Application>()
             if (value) {
-                GlobalNotchService.start(app, freqHz.value, depthDb.value)
+                GlobalNotchService.start(app, freqHz.value, depthDb.value, widthOctaves.value)
             } else {
                 GlobalNotchService.stop(app)
             }
@@ -62,12 +65,22 @@ class GlobalNotchViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch { store.setDepth(db) }
     }
 
+    /** Cambia el ancho del notch en octavas (0.1 angosto … 3.0 ancho). Se reconfigura en caliente. */
+    fun setWidthOctaves(octaves: Float) {
+        viewModelScope.launch { store.setWidthOctaves(octaves.coerceIn(0.1f, 3f)) }
+    }
+
     /** Llamar al arrancar la app: si quedó activado de una sesión previa, relanza el servicio. */
     fun restoreIfNeeded() {
         if (!isSupported) return
         viewModelScope.launch {
             if (store.enabled.first()) {
-                GlobalNotchService.start(getApplication(), store.freqHz.first(), store.depthDb.first())
+                GlobalNotchService.start(
+                    getApplication(),
+                    store.freqHz.first(),
+                    store.depthDb.first(),
+                    store.widthOctaves.first()
+                )
             }
         }
     }

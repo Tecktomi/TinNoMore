@@ -120,38 +120,6 @@ fun PatientHomeScreen(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-
-            // ── Notch Therapy info ────────────────────────────────────────
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
-            ) {
-                Row(
-                    modifier          = Modifier.fillMaxWidth().padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.MusicNote,
-                        contentDescription = null,
-                        tint     = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(28.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            "Notch Therapy activa",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize   = 14.sp
-                        )
-                        Text(
-                            "Ingresa tu audiometría para configurar la frecuencia",
-                            fontSize = 12.sp,
-                            color    = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                    }
-                }
-            }
         }
     }
 }

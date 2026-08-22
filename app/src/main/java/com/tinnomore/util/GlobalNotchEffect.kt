@@ -71,7 +71,12 @@ object GlobalNotchEffect {
      * @param fcHz     frecuencia central del notch (misma que en NotchProcessor)
      * @param depthDb  profundidad del notch en dB (negativo, ej. -24f = fuerte atenuación)
      */
-    fun start(fcHz: Int, depthDb: Float = -24f) {
+    /**
+     * @param fcHz         frecuencia central del notch (misma que en NotchProcessor)
+     * @param depthDb      profundidad del notch en dB (negativo, ej. -24f = fuerte atenuación)
+     * @param widthOctaves ancho total del notch en octavas (1f = fc/√2…fc×√2, igual que el histórico)
+     */
+    fun start(fcHz: Int, depthDb: Float = -24f, widthOctaves: Float = 1f) {
         release()
         try {
             val bandFreqs = buildLogBands()
@@ -99,7 +104,7 @@ object GlobalNotchEffect {
                 val eq = DynamicsProcessing.Eq(true, true, BAND_COUNT)
                 for (b in bandFreqs.indices) {
                     val freq = bandFreqs[b]
-                    val gain = gainForBand(freq, fcHz.toFloat(), depthDb)
+                    val gain = gainForBand(freq, fcHz.toFloat(), depthDb, widthOctaves)
                     val band = DynamicsProcessing.EqBand(true, freq, gain)
                     eq.setBand(b, band)
                 }
@@ -108,7 +113,7 @@ object GlobalNotchEffect {
 
             effect.enabled = true
             dp = effect
-            Log.i(TAG, "Notch global activo: fc=${fcHz}Hz depth=${depthDb}dB (session=0)")
+            Log.i(TAG, "Notch global activo: fc=${fcHz}Hz depth=${depthDb}dB width=${widthOctaves}oct (session=0)")
         } catch (e: Exception) {
             // Si el fabricante bloquea efectos en sesión global, esto puede
             // lanzar IllegalStateException/UnsupportedOperationException.
@@ -117,11 +122,11 @@ object GlobalNotchEffect {
         }
     }
 
-    /** Actualiza solo la frecuencia/profundidad sin recrear el efecto si ya existe. */
-    fun update(fcHz: Int, depthDb: Float = -24f) {
+    /** Actualiza frecuencia/profundidad/ancho sin recrear el efecto si ya existe. */
+    fun update(fcHz: Int, depthDb: Float = -24f, widthOctaves: Float = 1f) {
         val effect = dp
         if (effect == null) {
-            start(fcHz, depthDb)
+            start(fcHz, depthDb, widthOctaves)
             return
         }
         try {
@@ -130,14 +135,14 @@ object GlobalNotchEffect {
                 val eq = DynamicsProcessing.Eq(true, true, BAND_COUNT)
                 for (b in bandFreqs.indices) {
                     val freq = bandFreqs[b]
-                    val gain = gainForBand(freq, fcHz.toFloat(), depthDb)
+                    val gain = gainForBand(freq, fcHz.toFloat(), depthDb, widthOctaves)
                     eq.setBand(b, DynamicsProcessing.EqBand(true, freq, gain))
                 }
                 effect.setPostEqAllChannelsTo(eq)
             }
         } catch (e: Exception) {
             Log.e(TAG, "No se pudo actualizar el notch global, reintentando desde cero", e)
-            start(fcHz, depthDb)
+            start(fcHz, depthDb, widthOctaves)
         }
     }
 
@@ -163,13 +168,14 @@ object GlobalNotchEffect {
     }
 
     /**
-     * Misma filosofía que NotchProcessor.applyNotch: notch de 1 octava
-     * (fc/√2 … fc·√2) con transición suave hacia los bordes para no generar
-     * artefactos audibles banda a banda.
+     * Misma filosofía que NotchProcessor.applyNotch: notch de ancho
+     * configurable en octavas (widthOctaves, total, centrado en fc) con
+     * transición suave hacia los bordes para no generar artefactos
+     * audibles banda a banda.
      */
-    private fun gainForBand(bandFreq: Float, fcHz: Float, depthDb: Float): Float {
+    private fun gainForBand(bandFreq: Float, fcHz: Float, depthDb: Float, widthOctaves: Float): Float {
         val octavesFromCenter = kotlin.math.abs(log2(bandFreq / fcHz))
-        val halfWidthOctaves = 0.5f // total 1 octava de ancho (±0.5 oct)
+        val halfWidthOctaves = widthOctaves.coerceIn(0.1f, 3f) / 2f
         return when {
             octavesFromCenter <= halfWidthOctaves * 0.6f -> depthDb
             octavesFromCenter >= halfWidthOctaves * 1.6f -> 0f

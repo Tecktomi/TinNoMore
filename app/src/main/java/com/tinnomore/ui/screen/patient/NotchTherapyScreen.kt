@@ -2,6 +2,7 @@ package com.tinnomore.ui.screen.patient
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,7 +23,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -34,8 +41,10 @@ import com.tinnomore.viewmodel.AudiometryViewModel
 import com.tinnomore.viewmodel.GlobalNotchViewModel
 import com.tinnomore.viewmodel.NotchGenState
 import com.tinnomore.viewmodel.NotchViewModel
+import kotlin.math.abs
+import kotlin.math.log2
+import kotlin.math.pow
 import kotlin.math.roundToInt
-import kotlin.math.sqrt
 
 // ── Paleta ────────────────────────────────────────────────────────────────────
 private val Teal700  = Color(0xFF00695C)
@@ -43,6 +52,10 @@ private val Teal50   = Color(0xFFE0F2F1)
 private val Teal100  = Color(0xFFB2DFDB)
 private val Amber500 = Color(0xFFFFC107)
 private val Amber600 = Color(0xFFFFB300)
+private val NotchGreen      = Color(0xFF2E9E5B)
+private val NotchGreenDark  = Color(0xFF1B6B3C)
+private val NotchGreenSoft  = Color(0xFFCFEFDA)
+private val GraphInk        = Color(0xFF163A2E)
 private val AmberBg  = Color(0xFFFFF8E1)
 private val Red50    = Color(0xFFFFEBEE)
 private val Red400   = Color(0xFFEF5350)
@@ -75,10 +88,24 @@ fun NotchTherapyScreen(
     val selectedFreq by notchVm.selectedFreq.collectAsState()
     val noiseType    by notchVm.noiseType.collectAsState()
     val volumeDb     by notchVm.volumeDb.collectAsState()
+    val widthOctaves by notchVm.widthOctaves.collectAsState()
     val isPlaying    by notchVm.isPlaying.collectAsState()
     val genState     by notchVm.genState.collectAsState()
 
     val globalEnabled by globalNotchVm.enabled.collectAsState()
+
+    // ── Toggles de edición manual ────────────────────────────────────────────
+    // Por defecto la pantalla es solo informativa: se muestran los valores
+    // configurados (frecuencia central y ancho de banda) sin poder tocarlos.
+    // Estos toggles habilitan sus respectivos controles cuando el usuario
+    // realmente necesita ajustarlos a mano.
+    var manualFreqEnabled  by remember { mutableStateOf(false) }
+    var manualWidthEnabled by remember { mutableStateOf(false) }
+
+    // El ancho de banda es uno solo: se define arriba (ruido local) y se
+    // replica automáticamente al notch en segundo plano para que ambos
+    // filtren siempre exactamente el mismo rango.
+    LaunchedEffect(widthOctaves) { globalNotchVm.setWidthOctaves(widthOctaves) }
 
     LaunchedEffect(patientId) { audiometryVm.loadLatestProfile(patientId) }
 
@@ -87,7 +114,6 @@ fun NotchTherapyScreen(
     LaunchedEffect(selectedFreq, globalEnabled) {
         if (globalEnabled) globalNotchVm.setFrequency(selectedFreq)
     }
-
     LaunchedEffect(predictedFc) {
         predictedFc?.let { fc ->
             if (notchVm.availableFrequencies.contains(fc)) notchVm.setFrequency(fc)
@@ -135,34 +161,41 @@ fun NotchTherapyScreen(
 
             Spacer(Modifier.height(14.dp))
 
-            // ── 2. Selector de frecuencia ─────────────────────────────────────────
-            FrequencySelector(
-                frequencies = notchVm.availableFrequencies,
-                selected    = selectedFreq,
-                predictedFc = predictedFc,
-                onSelect    = { notchVm.setFrequency(it) }
+            // ── 2. Toggles de ajuste manual ───────────────────────────────────────
+            ManualAdjustmentTogglesCard(
+                manualFreqEnabled  = manualFreqEnabled,
+                onManualFreqChange = { manualFreqEnabled = it },
+                manualWidthEnabled = manualWidthEnabled,
+                onManualWidthChange = { manualWidthEnabled = it }
             )
 
             Spacer(Modifier.height(14.dp))
 
-            // ── 3. Rango del notch ────────────────────────────────────────────────
-            NotchRangeCard(fcHz = selectedFreq)
+            // ── 3. Frecuencia central + ancho de banda (un solo contenedor) ────────
+            // Sin los toggles activados, solo se informan los valores configurados
+            // (ML o predeterminados), sin posibilidad de modificarlos.
+            FrequencyAndWidthCard(
+                frequencies     = notchVm.availableFrequencies,
+                selectedFreq    = selectedFreq,
+                predictedFc     = predictedFc,
+                freqEditable    = manualFreqEnabled,
+                onSelectFreq    = { notchVm.setFrequency(it) },
+                widthOctaves    = widthOctaves,
+                widthEditable   = manualWidthEnabled,
+                onWidthChange   = { notchVm.setWidthOctaves(it) },
+                volumeDb        = volumeDb,
+                onVolumeChange  = { notchVm.setVolume(it) }
+            )
 
             Spacer(Modifier.height(14.dp))
 
-            // ── 3b. Notch global (todo el audio del dispositivo) ───────────────────
+            // ── 5. Notch global (todo el audio del dispositivo) ─────────────────────
             GlobalNotchCard(
-                enabled       = globalEnabled,
-                fcHz          = selectedFreq,
-                isSupported   = globalNotchVm.isSupported,
+                enabled        = globalEnabled,
+                isSupported    = globalNotchVm.isSupported,
                 unsupportedMsg = globalNotchVm.minSdkMessage,
-                onToggle      = { globalNotchVm.setEnabled(it) }
+                onToggle       = { globalNotchVm.setEnabled(it) }
             )
-
-            Spacer(Modifier.height(14.dp))
-
-            // ── 4. Volumen ────────────────────────────────────────────────────────
-            VolumeCard(volumeDb = volumeDb, onVolumeChange = { notchVm.setVolume(it) })
 
             Spacer(Modifier.height(20.dp))
 
@@ -200,7 +233,7 @@ fun NotchTherapyScreen(
                 }
             }
 
-            // ── 5. Play / Pause ───────────────────────────────────────────────────
+            // ── 6. Play / Pause ───────────────────────────────────────────────────
             PlayButton(
                 isPlaying = isPlaying,
                 isLoading = genState is NotchGenState.Generating,
@@ -373,15 +406,15 @@ private fun NoiseInfoRow(emoji: String, bold: String?, text: String) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  FrequencySelector
+//  ManualAdjustmentTogglesCard
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun FrequencySelector(
-    frequencies: List<Int>,
-    selected: Int,
-    predictedFc: Int?,
-    onSelect: (Int) -> Unit
+private fun ManualAdjustmentTogglesCard(
+    manualFreqEnabled: Boolean,
+    onManualFreqChange: (Boolean) -> Unit,
+    manualWidthEnabled: Boolean,
+    onManualWidthChange: (Boolean) -> Unit
 ) {
     Card(
         modifier  = Modifier.fillMaxWidth(),
@@ -389,7 +422,74 @@ private fun FrequencySelector(
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
+            Text("Ajustes manuales", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Teal700)
 
+            Spacer(Modifier.height(10.dp))
+
+            ManualToggleRow(
+                title    = "Cambiar frecuencia manualmente",
+                checked  = manualFreqEnabled,
+                onCheck  = onManualFreqChange
+            )
+            Spacer(Modifier.height(4.dp))
+            ManualToggleRow(
+                title    = "Cambiar ancho de banda manualmente",
+                checked  = manualWidthEnabled,
+                onCheck  = onManualWidthChange
+            )
+        }
+    }
+}
+
+@Composable
+private fun ManualToggleRow(title: String, checked: Boolean, onCheck: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(title, fontSize = 13.sp, color = GraphInk, modifier = Modifier.weight(1f))
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheck,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = Teal700
+            )
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  FrequencyAndWidthCard — frecuencia central, curva del filtro, ancho e
+//  intensidad, todo en un solo contenedor cohesivo.
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun FrequencyAndWidthCard(
+    frequencies: List<Int>,
+    selectedFreq: Int,
+    predictedFc: Int?,
+    freqEditable: Boolean = true,
+    onSelectFreq: (Int) -> Unit,
+    widthOctaves: Float,
+    widthEditable: Boolean = true,
+    onWidthChange: (Float) -> Unit,
+    volumeDb: Float,
+    onVolumeChange: (Float) -> Unit
+) {
+    val lower = notchEdgeHz(selectedFreq, widthOctaves, lower = true)
+    val upper = notchEdgeHz(selectedFreq, widthOctaves, lower = false)
+
+    Card(
+        modifier  = Modifier.fillMaxWidth(),
+        shape     = RoundedCornerShape(18.dp),
+        colors    = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(1.dp)
+    ) {
+        Column(modifier = Modifier.padding(18.dp)) {
+
+            // ── Frecuencia central ──────────────────────────────────────────
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -407,9 +507,9 @@ private fun FrequencySelector(
                 }
             }
 
-            val isMLSelected = selected == predictedFc
+            val isMLSelected = selectedFreq == predictedFc
             Text(
-                FrequencyPredictor.freqLabel(selected),
+                FrequencyPredictor.freqLabel(selectedFreq),
                 fontSize   = 42.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color      = if (isMLSelected) Amber600 else Teal700,
@@ -417,140 +517,119 @@ private fun FrequencySelector(
                     .align(Alignment.CenterHorizontally)
                     .padding(vertical = 8.dp)
             )
-            if (isMLSelected && predictedFc != null) {
-                Text(
-                    "Frecuencia recomendada por tu audiometría",
-                    fontSize   = 11.sp,
-                    color      = Amber500,
-                    textAlign  = TextAlign.Center,
-                    modifier   = Modifier.fillMaxWidth().padding(bottom = 4.dp)
-                )
-            }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                frequencies.forEach { freq ->
-                    val isSelected  = freq == selected
-                    val isPredicted = freq == predictedFc
+            if (freqEditable) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    frequencies.forEach { freq ->
+                        val isSelected  = freq == selectedFreq
+                        val isPredicted = freq == predictedFc
 
-                    val chipBg = when {
-                        isSelected && isPredicted -> Amber600
-                        isSelected               -> Teal700
-                        isPredicted              -> AmberBg
-                        else                     -> Teal50
-                    }
-                    val chipText = when {
-                        isSelected && isPredicted -> Color.White
-                        isSelected               -> Color.White
-                        isPredicted              -> Amber600
-                        else                     -> Teal700
-                    }
-                    val chipBorder = if (isPredicted && !isSelected) Amber600 else Color.Transparent
+                        val chipBg = when {
+                            isSelected && isPredicted -> Amber600
+                            isSelected               -> Teal700
+                            isPredicted              -> AmberBg
+                            else                     -> Teal50
+                        }
+                        val chipText = when {
+                            isSelected && isPredicted -> Color.White
+                            isSelected               -> Color.White
+                            isPredicted              -> Amber600
+                            else                     -> Teal700
+                        }
+                        val chipBorder = if (isPredicted && !isSelected) Amber600 else Color.Transparent
 
-                    Surface(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .border(if (isPredicted && !isSelected) 1.5.dp else 0.dp, chipBorder, RoundedCornerShape(20.dp))
-                            .clickable { onSelect(freq) },
-                        color = chipBg,
-                        shape = RoundedCornerShape(20.dp)
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                        Surface(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .border(if (isPredicted && !isSelected) 1.5.dp else 0.dp, chipBorder, RoundedCornerShape(20.dp))
+                                .clickable { onSelectFreq(freq) },
+                            color = chipBg,
+                            shape = RoundedCornerShape(20.dp)
                         ) {
-                            Text(
-                                FrequencyPredictor.freqLabel(freq),
-                                fontSize   = 12.sp,
-                                fontWeight = if (isSelected || isPredicted) FontWeight.Bold else FontWeight.Normal,
-                                color      = chipText
-                            )
-                            if (isPredicted) {
-                                Text("Frecuencia predicha", fontSize = 8.sp)
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                            ) {
+                                Text(
+                                    FrequencyPredictor.freqLabel(freq),
+                                    fontSize   = 12.sp,
+                                    fontWeight = if (isSelected || isPredicted) FontWeight.Bold else FontWeight.Normal,
+                                    color      = chipText
+                                )
+                                if (isPredicted) {
+                                    Text("Frecuencia predicha", fontSize = 8.sp)
+                                }
                             }
                         }
                     }
                 }
             }
-        }
-    }
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  NotchRangeCard
-// ─────────────────────────────────────────────────────────────────────────────
+            // ── Curva verde del notch: solo visible con ajuste manual de ancho ──
+            if (widthEditable) {
+                Spacer(Modifier.height(14.dp))
 
-@Composable
-private fun NotchRangeCard(fcHz: Int) {
-    val lower = (fcHz / sqrt(2.0)).roundToInt()
-    val upper = (fcHz * sqrt(2.0)).roundToInt()
+                NotchCurveGraph(
+                    fcHz = selectedFreq,
+                    widthOctaves = widthOctaves,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp)
+                )
 
-    Card(
-        modifier  = Modifier.fillMaxWidth(),
-        colors    = CardDefaults.cardColors(containerColor = Teal50),
-        elevation = CardDefaults.cardElevation(0.dp)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Rango del filtro notch", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Teal700)
-            Spacer(Modifier.height(10.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment     = Alignment.CenterVertically
-            ) {
-                FreqPill("−1 octava", lower, "límite inferior")
-                Text("↔", fontSize = 20.sp, color = Teal700)
-                FreqPill("fc", fcHz, "centro", bold = true)
-                Text("↔", fontSize = 20.sp, color = Teal700)
-                FreqPill("+1 octava", upper, "límite superior")
+                Spacer(Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(FrequencyPredictor.freqLabel(lower), fontSize = 11.sp, color = Color.Gray)
+                    Text("centro ${FrequencyPredictor.freqLabel(selectedFreq)}", fontSize = 11.sp, color = NotchGreenDark, fontWeight = FontWeight.Medium)
+                    Text(FrequencyPredictor.freqLabel(upper), fontSize = 11.sp, color = Color.Gray)
+                }
             }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "Ancho de banda: 1 octava (fc/√2 … fc×√2)",
-                fontSize = 11.sp, color = Color.Gray,
-                textAlign = TextAlign.Center,
-                modifier  = Modifier.fillMaxWidth()
-            )
-        }
-    }
-}
 
-@Composable
-private fun FreqPill(topLabel: String, hz: Int, bottomLabel: String, bold: Boolean = false) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(topLabel, fontSize = 10.sp, color = Color.Gray)
-        Text(
-            FrequencyPredictor.freqLabel(hz),
-            fontSize   = if (bold) 18.sp else 14.sp,
-            fontWeight = if (bold) FontWeight.ExtraBold else FontWeight.SemiBold,
-            color      = Teal700
-        )
-        Text(bottomLabel, fontSize = 10.sp, color = Color.Gray)
-    }
-}
+            Divider(modifier = Modifier.padding(vertical = 16.dp), color = Color(0xFFF0F0F0))
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  VolumeCard
-// ─────────────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun VolumeCard(volumeDb: Float, onVolumeChange: (Float) -> Unit) {
-    Card(
-        modifier  = Modifier.fillMaxWidth(),
-        colors    = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(2.dp)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+            // ── Ancho de banda ───────────────────────────────────────────────
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment     = Alignment.CenterVertically
             ) {
-                Text("Intensidad", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Teal700)
+                Text("Ancho de banda", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = GraphInk)
+                Surface(color = NotchGreenSoft, shape = RoundedCornerShape(6.dp)) {
+                    Text(
+                        "${String.format("%.2f", widthOctaves)} oct",
+                        fontSize = 13.sp, fontWeight = FontWeight.Bold, color = NotchGreenDark,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+            }
+            if (widthEditable) {
+                Slider(
+                    value         = widthOctaves,
+                    onValueChange = onWidthChange,
+                    valueRange    = 0.1f..3f,
+                    colors        = SliderDefaults.colors(thumbColor = NotchGreen, activeTrackColor = NotchGreen),
+                    modifier      = Modifier.fillMaxWidth()
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // ── Intensidad ───────────────────────────────────────────────────
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment     = Alignment.CenterVertically
+            ) {
+                Text("Intensidad", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = GraphInk)
                 Surface(color = Teal100, shape = RoundedCornerShape(6.dp)) {
                     Text(
                         "${volumeDb.roundToInt()} dB",
@@ -572,6 +651,105 @@ private fun VolumeCard(volumeDb: Float, onVolumeChange: (Float) -> Unit) {
                 Text("Máximo (0 dB)", fontSize = 11.sp, color = Color.Gray)
             }
         }
+    }
+}
+
+/** Límite inferior/superior del notch en Hz, dado el ancho total en octavas. */
+private fun notchEdgeHz(fcHz: Int, widthOctaves: Float, lower: Boolean): Int {
+    val half = widthOctaves / 2.0
+    val factor = 2.0.pow(if (lower) -half else half)
+    return (fcHz * factor).roundToInt()
+}
+
+/**
+ * Curva del filtro notch en escala logarítmica de frecuencia (100 Hz–16 kHz),
+ * calculada con la misma matemática que GlobalNotchEffect.gainForBand para
+ * que lo que se ve acá sea exactamente lo que se está aplicando.
+ */
+@Composable
+private fun NotchCurveGraph(fcHz: Int, widthOctaves: Float, modifier: Modifier = Modifier) {
+    val fMin = 100f
+    val fMax = 16000f
+    val logMin = log2(fMin)
+    val logMax = log2(fMax)
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val topPad = 8f
+        val bottomPad = 8f
+        val plotH = h - topPad - bottomPad
+
+        fun xForFreq(f: Float): Float {
+            val t = ((log2(f) - logMin) / (logMax - logMin)).coerceIn(0f, 1f)
+            return t * w
+        }
+
+        // gain 0f = sin atenuar (arriba), 1f = atenuación máxima del notch (abajo)
+        fun attenuationAt(f: Float): Float {
+            val halfWidth = (widthOctaves / 2f).coerceIn(0.05f, 1.5f)
+            val octaves = abs(log2(f / fcHz))
+            return when {
+                octaves <= halfWidth * 0.6f -> 1f
+                octaves >= halfWidth * 1.6f -> 0f
+                else -> {
+                    val t = (octaves - halfWidth * 0.6f) / (halfWidth * 1.6f - halfWidth * 0.6f)
+                    1f - t.coerceIn(0f, 1f)
+                }
+            }
+        }
+
+        val steps = 96
+        val points = (0..steps).map { i ->
+            val f = 2f.pow(logMin + (logMax - logMin) * i / steps)
+            val atten = attenuationAt(f)
+            val y = topPad + atten * plotH
+            Offset(xForFreq(f), y)
+        }
+
+        // Área rellena bajo la curva (gradiente verde)
+        val fillPath = Path().apply {
+            moveTo(points.first().x, topPad + plotH)
+            points.forEach { lineTo(it.x, it.y) }
+            lineTo(points.last().x, topPad + plotH)
+            close()
+        }
+        drawPath(
+            path = fillPath,
+            brush = Brush.verticalGradient(
+                colors = listOf(NotchGreen.copy(alpha = 0.35f), NotchGreen.copy(alpha = 0.03f)),
+                startY = topPad,
+                endY = topPad + plotH
+            )
+        )
+
+        // Línea de la curva
+        val linePath = Path().apply {
+            moveTo(points.first().x, points.first().y)
+            points.drop(1).forEach { lineTo(it.x, it.y) }
+        }
+        drawPath(
+            path = linePath,
+            color = NotchGreenDark,
+            style = Stroke(width = 5f, cap = StrokeCap.Round)
+        )
+
+        // Línea vertical punteada marcando fc
+        val fcX = xForFreq(fcHz.toFloat())
+        drawLine(
+            color = NotchGreenDark.copy(alpha = 0.5f),
+            start = Offset(fcX, topPad),
+            end   = Offset(fcX, topPad + plotH),
+            strokeWidth = 3f,
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+        )
+
+        // Punto central en el fondo de la curva (mínimo, i.e. máxima atenuación)
+        drawCircle(
+            color = NotchGreenDark,
+            radius = 8f,
+            center = Offset(fcX, topPad + plotH)
+        )
     }
 }
 
@@ -656,51 +834,57 @@ private fun PlayingBadge(fcHz: Int, noiseType: NoiseType, volumeDb: Float) {
 @Composable
 private fun GlobalNotchCard(
     enabled: Boolean,
-    fcHz: Int,
     isSupported: Boolean,
     unsupportedMsg: String?,
     onToggle: (Boolean) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (enabled) Color(0xFFEDE7F6) else MaterialTheme.colorScheme.surfaceVariant
-        )
+            containerColor = if (enabled) NotchGreenDark else MaterialTheme.colorScheme.surfaceVariant
+        ),
+        elevation = CardDefaults.cardElevation(0.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(18.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "Notch en todo el audio del dispositivo",
+                        "Notch global",
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp
+                        fontSize = 14.sp,
+                        color = if (enabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.height(2.dp))
                     Text(
                         if (isSupported)
-                            "Aplica el filtro a cualquier app que reproduzca sonido (música, podcasts, videos), no solo a TinNoMore."
+                            "Filtra todo sonido del celular, como música, podcasts, o videos."
                         else
                             unsupportedMsg ?: "No disponible en este dispositivo.",
                         fontSize = 12.sp,
-                        color = Color.Gray
+                        color = if (enabled) Color.White.copy(alpha = 0.75f) else Color.Gray
                     )
                 }
                 Switch(
                     checked = enabled,
                     onCheckedChange = onToggle,
-                    enabled = isSupported
+                    enabled = isSupported,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = NotchGreen
+                    )
                 )
             }
 
             if (enabled) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
                 Text(
-                    "Filtrando ${FrequencyPredictor.freqLabel(fcHz)} · Se mantiene activo mientras la app corra en segundo plano (verás una notificación).",
+                    "Se mantiene activo con la app en segundo plano.",
                     fontSize = 11.sp,
-                    color = Color(0xFF4A148C)
+                    color = Color.White.copy(alpha = 0.6f)
                 )
             }
         }

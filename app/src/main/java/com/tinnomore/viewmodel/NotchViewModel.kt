@@ -41,6 +41,11 @@ class NotchViewModel(application: Application) : AndroidViewModel(application) {
     private val _volumeDb = MutableStateFlow(-6f)
     val volumeDb: StateFlow<Float> = _volumeDb.asStateFlow()
 
+    // Ancho del notch en octavas. 1.0 = valor histórico (fc/√2 … fc×√2).
+    // Rango recomendado en UI: 0.25 (angosto, muy preciso) a 2.0 (ancho, más agresivo).
+    private val _widthOctaves = MutableStateFlow(1f)
+    val widthOctaves: StateFlow<Float> = _widthOctaves.asStateFlow()
+
     // ── Estado ────────────────────────────────────────────────────────────────
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
@@ -72,6 +77,14 @@ class NotchViewModel(application: Application) : AndroidViewModel(application) {
     fun setVolume(db: Float) {
         _volumeDb.value = db
         audioTrack?.setVolume(dbToLinear(db))   // tiempo real, sin regenerar
+    }
+
+    /** Cambia el ancho del notch (en octavas). Requiere regenerar el buffer. */
+    fun setWidthOctaves(octaves: Float) {
+        val clamped = octaves.coerceIn(0.1f, 3f)
+        if (clamped == _widthOctaves.value) return
+        invalidateBuffer()
+        _widthOctaves.value = clamped
     }
 
     /** Genera buffer + inicia reproducción. Si ya hay buffer válido, sólo reproduce. */
@@ -107,10 +120,11 @@ class NotchViewModel(application: Application) : AndroidViewModel(application) {
         val freq  = _selectedFreq.value
         val noise = _noiseType.value
         val db    = _volumeDb.value
+        val width = _widthOctaves.value
         viewModelScope.launch(Dispatchers.Default) {
             _genState.value = NotchGenState.Generating
             try {
-                val buf = NotchProcessor.generate(app, noise, freq, db)
+                val buf = NotchProcessor.generate(app, noise, freq, db, width)
                 pcmBuffer = buf
                 _genState.value = NotchGenState.Ready(freq, noise)
                 withContext(Dispatchers.Main) { startPlayback(buf) }

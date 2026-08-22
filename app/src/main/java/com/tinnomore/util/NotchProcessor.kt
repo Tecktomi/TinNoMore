@@ -45,7 +45,8 @@ object NotchProcessor {
         context:   Context,
         noiseType: NoiseType,
         fcHz:      Int,
-        gainDb:    Float = 0f
+        gainDb:    Float = 0f,
+        widthOctaves: Float = 1f
     ): ShortArray {
         val rawId = context.resources.getIdentifier(noiseType.rawName, "raw", context.packageName)
         require(rawId != 0) { "Recurso raw no encontrado: ${noiseType.rawName}" }
@@ -63,8 +64,8 @@ object NotchProcessor {
         }
 
         // Aplicar notch a cada canal
-        applyNotch(left,  fcHz, SAMPLE_RATE)
-        applyNotch(right, fcHz, SAMPLE_RATE)
+        applyNotch(left,  fcHz, SAMPLE_RATE, widthOctaves)
+        applyNotch(right, fcHz, SAMPLE_RATE, widthOctaves)
 
         // Ganancia
         val linear = 10f.pow(gainDb / 20f)
@@ -111,12 +112,16 @@ object NotchProcessor {
 
     /**
      * H(z) = (1 - 2cos(w0)z⁻¹ + z⁻²) / (1 - 2r·cos(w0)z⁻¹ + r²z⁻²)
-     * BW de 1 octava: fc/√2 a fc×√2  →  BW_Hz ≈ fc × 0.7071
+     * Ancho de banda configurable en octavas alrededor de fc.
+     * widthOctaves = 1.0 → BW_Hz ≈ fc × 0.7071 (fc/√2 a fc×√2, el valor por defecto anterior)
+     * widthOctaves menor → notch más angosto (afecta menos frecuencias vecinas)
+     * widthOctaves mayor → notch más ancho (corta más espectro alrededor de fc)
      */
-    private fun applyNotch(buf: FloatArray, fcHz: Int, sr: Int) {
+    private fun applyNotch(buf: FloatArray, fcHz: Int, sr: Int, widthOctaves: Float = 1f) {
         val w0   = 2.0 * PI * fcHz / sr
-        val bwHz = fcHz * (sqrt(2.0) - 1.0 / sqrt(2.0))
-        val r    = 1.0 - PI * bwHz / sr
+        val n    = widthOctaves.toDouble()
+        val bwHz = fcHz * (2.0.pow(n / 2.0) - 2.0.pow(-n / 2.0))
+        val r    = (1.0 - PI * bwHz / sr).coerceIn(0.0, 0.999) // evita inestabilidad del filtro con anchos grandes
 
         val cosW = cos(w0)
         val a1num = -2.0 * cosW

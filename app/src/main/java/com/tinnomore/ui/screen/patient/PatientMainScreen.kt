@@ -72,7 +72,15 @@ fun PatientMainScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            // Reserva el espacio de la barra de navegación del sistema para
+            // que nuestra barra inferior personalizada nunca quede tapada
+            // por ella (el resto de la pantalla sigue en edge-to-edge, así
+            // las topbars pueden extender su color bajo la barra de estado).
+            .navigationBarsPadding()
+    ) {
 
         // ── Contenido de la pestaña activa ────────────────────────────────
         // Padding inferior para que el contenido no quede tapado por la barra

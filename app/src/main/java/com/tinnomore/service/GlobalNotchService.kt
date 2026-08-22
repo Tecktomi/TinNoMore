@@ -41,17 +41,26 @@ import kotlinx.coroutines.launch
  */
 class GlobalNotchService : Service() {
 
+    private data class NotchLiveConfig(
+        val enabled: Boolean,
+        val freqHz: Int,
+        val depthDb: Float,
+        val widthOctaves: Float
+    )
+
     companion object {
         const val CHANNEL_ID = "global_notch_channel"
         const val NOTIFICATION_ID = 4821
 
         const val EXTRA_FREQ_HZ = "freq_hz"
         const val EXTRA_DEPTH_DB = "depth_db"
+        const val EXTRA_WIDTH_OCTAVES = "width_octaves"
 
-        fun start(context: Context, freqHz: Int, depthDb: Float) {
+        fun start(context: Context, freqHz: Int, depthDb: Float, widthOctaves: Float) {
             val intent = Intent(context, GlobalNotchService::class.java).apply {
                 putExtra(EXTRA_FREQ_HZ, freqHz)
                 putExtra(EXTRA_DEPTH_DB, depthDb)
+                putExtra(EXTRA_WIDTH_OCTAVES, widthOctaves)
             }
             context.startForegroundService(intent)
         }
@@ -74,31 +83,33 @@ class GlobalNotchService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val freq = intent?.getIntExtra(EXTRA_FREQ_HZ, 4000) ?: 4000
         val depth = intent?.getFloatExtra(EXTRA_DEPTH_DB, -24f) ?: -24f
+        val width = intent?.getFloatExtra(EXTRA_WIDTH_OCTAVES, 1f) ?: 1f
 
         startForeground(NOTIFICATION_ID, buildNotification(freq))
 
         if (GlobalNotchEffect.isSupported) {
-            GlobalNotchEffect.start(freq, depth)
+            GlobalNotchEffect.start(freq, depth, width)
         }
 
-        // Escucha cambios posteriores de frecuencia/profundidad/activación
-        // (ej. el usuario cambia la frecuencia del notch mientras el modo
-        // global sigue activo) y reconfigura el efecto en caliente.
+        // Escucha cambios posteriores de frecuencia/profundidad/ancho/activación
+        // (ej. el usuario cambia la frecuencia o el ancho del notch mientras el
+        // modo global sigue activo) y reconfigura el efecto en caliente.
         settingsJob?.cancel()
         settingsJob = scope.launch {
             combine(
                 settingsStore.enabled,
                 settingsStore.freqHz,
-                settingsStore.depthDb
-            ) { enabled, hz, db -> Triple(enabled, hz, db) }
+                settingsStore.depthDb,
+                settingsStore.widthOctaves
+            ) { enabled, hz, db, w -> NotchLiveConfig(enabled, hz, db, w) }
                 .distinctUntilChanged()
-                .collect { (enabled, hz, db) ->
-                    if (!enabled) {
+                .collect { cfg ->
+                    if (!cfg.enabled) {
                         stopSelf()
                         return@collect
                     }
-                    GlobalNotchEffect.update(hz, db)
-                    updateNotification(hz)
+                    GlobalNotchEffect.update(cfg.freqHz, cfg.depthDb, cfg.widthOctaves)
+                    updateNotification(cfg.freqHz)
                 }
         }
 
