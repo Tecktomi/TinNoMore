@@ -30,11 +30,15 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nativeknights.rulerkit.InputType
+import com.nativeknights.rulerkit.RulerConfig
+import com.tinnomore.ui.components.SyncedRulerPicker
 import com.tinnomore.util.FrequencyPredictor
 import com.tinnomore.util.NotchProcessor.NoiseType
 import com.tinnomore.viewmodel.AudiometryViewModel
@@ -101,6 +105,7 @@ fun NotchTherapyScreen(
     // realmente necesita ajustarlos a mano.
     var manualFreqEnabled  by remember { mutableStateOf(false) }
     var manualWidthEnabled by remember { mutableStateOf(false) }
+    var fineTuneFreqEnabled by remember { mutableStateOf(false) }
 
     // El ancho de banda es uno solo: se define arriba (ruido local) y se
     // replica automáticamente al notch en segundo plano para que ambos
@@ -166,7 +171,9 @@ fun NotchTherapyScreen(
                 manualFreqEnabled  = manualFreqEnabled,
                 onManualFreqChange = { manualFreqEnabled = it },
                 manualWidthEnabled = manualWidthEnabled,
-                onManualWidthChange = { manualWidthEnabled = it }
+                onManualWidthChange = { manualWidthEnabled = it },
+                fineTuneFreqEnabled = fineTuneFreqEnabled,
+                onFineTuneFreqChange = { fineTuneFreqEnabled = it }
             )
 
             Spacer(Modifier.height(14.dp))
@@ -175,16 +182,17 @@ fun NotchTherapyScreen(
             // Sin los toggles activados, solo se informan los valores configurados
             // (ML o predeterminados), sin posibilidad de modificarlos.
             FrequencyAndWidthCard(
-                frequencies     = notchVm.availableFrequencies,
-                selectedFreq    = selectedFreq,
-                predictedFc     = predictedFc,
-                freqEditable    = manualFreqEnabled,
-                onSelectFreq    = { notchVm.setFrequency(it) },
-                widthOctaves    = widthOctaves,
-                widthEditable   = manualWidthEnabled,
-                onWidthChange   = { notchVm.setWidthOctaves(it) },
-                volumeDb        = volumeDb,
-                onVolumeChange  = { notchVm.setVolume(it) }
+                frequencies      = notchVm.availableFrequencies,
+                selectedFreq     = selectedFreq,
+                predictedFc      = predictedFc,
+                freqEditable     = manualFreqEnabled,
+                onSelectFreq     = { notchVm.setFrequency(it) },
+                fineTuneEnabled  = fineTuneFreqEnabled,
+                widthOctaves     = widthOctaves,
+                widthEditable    = manualWidthEnabled,
+                onWidthChange    = { notchVm.setWidthOctaves(it) },
+                volumeDb         = volumeDb,
+                onVolumeChange   = { notchVm.setVolume(it) }
             )
 
             Spacer(Modifier.height(14.dp))
@@ -414,7 +422,9 @@ private fun ManualAdjustmentTogglesCard(
     manualFreqEnabled: Boolean,
     onManualFreqChange: (Boolean) -> Unit,
     manualWidthEnabled: Boolean,
-    onManualWidthChange: (Boolean) -> Unit
+    onManualWidthChange: (Boolean) -> Unit,
+    fineTuneFreqEnabled: Boolean,
+    onFineTuneFreqChange: (Boolean) -> Unit
 ) {
     Card(
         modifier  = Modifier.fillMaxWidth(),
@@ -436,6 +446,12 @@ private fun ManualAdjustmentTogglesCard(
                 title    = "Cambiar ancho de banda manualmente",
                 checked  = manualWidthEnabled,
                 onCheck  = onManualWidthChange
+            )
+            Spacer(Modifier.height(4.dp))
+            ManualToggleRow(
+                title    = "Ajuste fino de frecuencia con regla (Hz)",
+                checked  = fineTuneFreqEnabled,
+                onCheck  = onFineTuneFreqChange
             )
         }
     }
@@ -472,6 +488,7 @@ private fun FrequencyAndWidthCard(
     predictedFc: Int?,
     freqEditable: Boolean = true,
     onSelectFreq: (Int) -> Unit,
+    fineTuneEnabled: Boolean = false,
     widthOctaves: Float,
     widthEditable: Boolean = true,
     onWidthChange: (Float) -> Unit,
@@ -517,6 +534,14 @@ private fun FrequencyAndWidthCard(
                     .align(Alignment.CenterHorizontally)
                     .padding(vertical = 8.dp)
             )
+
+            // Ajuste fino con regla: arranca siempre en la frecuencia actualmente
+            // seleccionada (la del chip activo, o la que esté vigente aunque los
+            // chips estén ocultos), y ambos controles quedan sincronizados entre
+            // sí a través de "selectedFreq". Es independiente de "freqEditable":
+            // se controla desde el toggle "Ajuste fino de frecuencia con regla
+            // (Hz)" en la tarjeta de Ajustes manuales, al mismo nivel que los
+            // otros dos toggles.
 
             if (freqEditable) {
                 Row(
@@ -570,9 +595,62 @@ private fun FrequencyAndWidthCard(
                 }
             }
 
+            if (fineTuneEnabled) {
+                Spacer(Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment     = Alignment.CenterVertically
+                ) {
+                    Text("Frecuencia exacta", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Teal700)
+                    Surface(color = Teal100, shape = RoundedCornerShape(6.dp)) {
+                        Text(
+                            // Valor exacto en Hz: freqLabel() de arriba redondea a
+                            // "2k Hz"/"3k Hz" y con el ajuste fino se pierde precisión.
+                            "$selectedFreq Hz",
+                            fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Teal700,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(18.dp))
+
+                // "value = selectedFreq" es lo que hace que, al activar el
+                // toggle, la regla arranque exactamente en la frecuencia
+                // vigente (p. ej. 1000 Hz si ese era el chip activo). Si luego
+                // se toca un chip distinto, SyncedRulerPicker también
+                // desplaza la regla.
+                SyncedRulerPicker(
+                    value         = selectedFreq.toFloat(),
+                    onValueChange = { onSelectFreq(it.roundToInt()) },
+                    config        = RulerConfig(
+                        inputType = InputType.Custom(
+                            min            = frequencies.min().toFloat(),
+                            max            = frequencies.max().toFloat(),
+                            step           = 10f,
+                            unitLabel      = "Hz",
+                            majorEvery     = 100, // línea mayor cada 1000 Hz
+                            mediumEvery    = 20,  // línea media cada 200 Hz
+                            valueFormatter = { it.roundToInt().toString() }
+                        ),
+                        indicatorColor = Teal700.toArgb(),
+                        // El badge de arriba ya muestra el valor exacto; se apaga
+                        // la etiqueta interna de la regla para no duplicarla ni
+                        // pisar las líneas.
+                        showValueLabel = false
+                    ),
+                    modifier = Modifier.fillMaxWidth().height(130.dp)
+                )
+            }
+
             // ── Curva verde del notch: solo visible con ajuste manual de ancho ──
             if (widthEditable) {
-                Spacer(Modifier.height(14.dp))
+                // Con el ruler de frecuencia visible (ajuste fino) hay más
+                // contenido arriba (badge + regla), así que hace falta más
+                // separación para que no se vea apretado contra el gráfico.
+                Spacer(Modifier.height(if (fineTuneEnabled) 64.dp else 40.dp))
 
                 NotchCurveGraph(
                     fcHz = selectedFreq,
@@ -612,12 +690,33 @@ private fun FrequencyAndWidthCard(
                 }
             }
             if (widthEditable) {
-                Slider(
+                SyncedRulerPicker(
                     value         = widthOctaves,
                     onValueChange = onWidthChange,
-                    valueRange    = 0.1f..3f,
-                    colors        = SliderDefaults.colors(thumbColor = NotchGreen, activeTrackColor = NotchGreen),
-                    modifier      = Modifier.fillMaxWidth()
+                    config        = RulerConfig(
+                        // min = 0f (no 0.1f): las líneas mayores/medias se ubican
+                        // a partir de "min", no de un múltiplo absoluto. Con
+                        // min = 0.1f las mayores caían en 0.6, 1.1, 1.6... En
+                        // cambio con min = 0f caen justo en 0.5, 1.0, 1.5, 2.0...
+                        // El piso real de 0.1 oct lo sigue garantizando
+                        // NotchViewModel.setWidthOctaves (coerceIn(0.1f, 3f)),
+                        // así que no se puede aplicar un ancho menor a 0.1 aunque
+                        // la regla permita deslizar visualmente hasta 0.
+                        inputType = InputType.Custom(
+                            min            = 0f,
+                            max            = 3f,
+                            step           = 0.1f,
+                            unitLabel      = "oct",
+                            majorEvery     = 5,  // línea mayor cada 0.5 oct
+                            mediumEvery    = 1,
+                            valueFormatter = { String.format("%.2f", it) }
+                        ),
+                        indicatorColor = NotchGreen.toArgb(),
+                        // Ya mostramos "X.XX oct" arriba en el badge verde; apagamos
+                        // la etiqueta interna para que no se pise con las líneas.
+                        showValueLabel = false
+                    ),
+                    modifier      = Modifier.fillMaxWidth().height(130.dp)
                 )
             }
 
@@ -638,13 +737,26 @@ private fun FrequencyAndWidthCard(
                     )
                 }
             }
-            Slider(
+            SyncedRulerPicker(
                 value         = volumeDb,
                 onValueChange = onVolumeChange,
-                valueRange    = -40f..0f,
-                steps         = 39,
-                colors        = SliderDefaults.colors(thumbColor = Teal700, activeTrackColor = Teal700),
-                modifier      = Modifier.fillMaxWidth()
+                config        = RulerConfig(
+                    inputType = InputType.Custom(
+                        min            = -40f,
+                        max            = 0f,
+                        step           = 1f,
+                        unitLabel      = "dB",
+                        majorEvery     = 10,
+                        mediumEvery    = 5,
+                        // Igual que "${volumeDb.roundToInt()} dB" del Slider original.
+                        valueFormatter = { it.roundToInt().toString() }
+                    ),
+                    indicatorColor = Teal700.toArgb(),
+                    // Ya mostramos "X dB" arriba en el badge; apagamos la etiqueta
+                    // interna para que no se pise con las líneas.
+                    showValueLabel = false
+                ),
+                modifier      = Modifier.fillMaxWidth().height(130.dp)
             )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Silencio (−40 dB)", fontSize = 11.sp, color = Color.Gray)

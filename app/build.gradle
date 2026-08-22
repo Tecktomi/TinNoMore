@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace 'com.tinnomore'
-    compileSdk 34
+    compileSdk 36
 
     defaultConfig {
         applicationId "com.tinnomore"
@@ -94,6 +94,9 @@ dependencies {
 
     // Coil — carga de imágenes (preview del audiograma)
     implementation 'io.coil-kt:coil-compose:2.6.0'
+
+    // RulerKit — selector tipo regla (reemplaza Slider en NotchTherapy/Audiometry)
+    implementation 'com.github.theadityatiwari:RulerKit:v1.0.1'
 
     // Testing
     testImplementation 'junit:junit:4.13.2'

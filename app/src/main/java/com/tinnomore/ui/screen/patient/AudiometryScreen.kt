@@ -37,12 +37,17 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.nativeknights.rulerkit.InputType
+import com.nativeknights.rulerkit.RulerConfig
 import com.tinnomore.data.api.TinnitusApiResult
+import com.tinnomore.ui.components.SyncedRulerPicker
 import com.tinnomore.util.FrequencyPredictor
 import com.tinnomore.viewmodel.AudiometryViewModel
 import com.tinnomore.viewmodel.ServerAnalysisState
+import kotlin.math.roundToInt
 import java.io.File
 
 private val Teal700 = Color(0xFF00695C)
@@ -252,11 +257,25 @@ private fun ManualTab(
                         fontWeight = FontWeight.SemiBold
                     )
                 }
-                Slider(
+                SyncedRulerPicker(
                     value         = threshold.toFloat(),
-                    onValueChange = { vm.setThreshold(freq, it.toInt()) },
-                    valueRange    = -10f..120f,
-                    modifier      = Modifier.fillMaxWidth()
+                    onValueChange = { vm.setThreshold(freq, it.roundToInt()) },
+                    config        = RulerConfig(
+                        inputType = InputType.Custom(
+                            min            = -10f,
+                            max            = 120f,
+                            step           = 1f,
+                            unitLabel      = "dB HL",
+                            majorEvery     = 10,
+                            mediumEvery    = 5,
+                            valueFormatter = { it.roundToInt().toString() }
+                        ),
+                        indicatorColor = earColor.toArgb(),
+                        // Ya mostramos "X dB HL" arriba en la fila; apagamos la
+                        // etiqueta interna para que no se pise con las líneas.
+                        showValueLabel = false
+                    ),
+                    modifier      = Modifier.fillMaxWidth().height(130.dp)
                 )
             }
         }
