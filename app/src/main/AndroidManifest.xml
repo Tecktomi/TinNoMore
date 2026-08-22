@@ -9,6 +9,12 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
+    <!-- Notch global: afecta al audio de todo el dispositivo, no solo el de esta app -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name=".TinNoMoreApplication"
         android:usesCleartextTraffic="true"
@@ -29,6 +35,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Servicio que mantiene activo el notch sobre TODO el audio del dispositivo -->
+        <service
+            android:name=".service.GlobalNotchService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <!-- FileProvider para compartir URIs de cámara de forma segura -->
         <provider

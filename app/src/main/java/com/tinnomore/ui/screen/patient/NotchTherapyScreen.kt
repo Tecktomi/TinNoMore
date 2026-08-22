@@ -31,6 +31,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tinnomore.util.FrequencyPredictor
 import com.tinnomore.util.NotchProcessor.NoiseType
 import com.tinnomore.viewmodel.AudiometryViewModel
+import com.tinnomore.viewmodel.GlobalNotchViewModel
 import com.tinnomore.viewmodel.NotchGenState
 import com.tinnomore.viewmodel.NotchViewModel
 import kotlin.math.roundToInt
@@ -67,7 +68,8 @@ fun NotchTherapyScreen(
     showBackButton: Boolean = false,
     initialNoiseType: NoiseType? = null,
     audiometryVm: AudiometryViewModel = viewModel(),
-    notchVm: NotchViewModel = viewModel()
+    notchVm: NotchViewModel = viewModel(),
+    globalNotchVm: GlobalNotchViewModel = viewModel()
 ) {
     val predictedFc  by audiometryVm.predictedFc.collectAsState()
     val selectedFreq by notchVm.selectedFreq.collectAsState()
@@ -76,7 +78,15 @@ fun NotchTherapyScreen(
     val isPlaying    by notchVm.isPlaying.collectAsState()
     val genState     by notchVm.genState.collectAsState()
 
+    val globalEnabled by globalNotchVm.enabled.collectAsState()
+
     LaunchedEffect(patientId) { audiometryVm.loadLatestProfile(patientId) }
+
+    // Si el notch global está activo, se mantiene sincronizado con la
+    // frecuencia elegida acá (misma fc para el ruido local y el filtro global).
+    LaunchedEffect(selectedFreq, globalEnabled) {
+        if (globalEnabled) globalNotchVm.setFrequency(selectedFreq)
+    }
 
     LaunchedEffect(predictedFc) {
         predictedFc?.let { fc ->
@@ -137,6 +147,17 @@ fun NotchTherapyScreen(
 
             // ── 3. Rango del notch ────────────────────────────────────────────────
             NotchRangeCard(fcHz = selectedFreq)
+
+            Spacer(Modifier.height(14.dp))
+
+            // ── 3b. Notch global (todo el audio del dispositivo) ───────────────────
+            GlobalNotchCard(
+                enabled       = globalEnabled,
+                fcHz          = selectedFreq,
+                isSupported   = globalNotchVm.isSupported,
+                unsupportedMsg = globalNotchVm.minSdkMessage,
+                onToggle      = { globalNotchVm.setEnabled(it) }
+            )
 
             Spacer(Modifier.height(14.dp))
 
@@ -627,5 +648,61 @@ private fun PlayingBadge(fcHz: Int, noiseType: NoiseType, volumeDb: Float) {
             color      = Color(0xFF2E7D32),
             fontWeight = FontWeight.Medium
         )
+    }
+}
+
+// ─── Notch global (todo el audio del dispositivo) ──────────────────────────
+
+@Composable
+private fun GlobalNotchCard(
+    enabled: Boolean,
+    fcHz: Int,
+    isSupported: Boolean,
+    unsupportedMsg: String?,
+    onToggle: (Boolean) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (enabled) Color(0xFFEDE7F6) else MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Notch en todo el audio del dispositivo",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        if (isSupported)
+                            "Aplica el filtro a cualquier app que reproduzca sonido (música, podcasts, videos), no solo a TinNoMore."
+                        else
+                            unsupportedMsg ?: "No disponible en este dispositivo.",
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    )
+                }
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = onToggle,
+                    enabled = isSupported
+                )
+            }
+
+            if (enabled) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Filtrando ${FrequencyPredictor.freqLabel(fcHz)} · Se mantiene activo mientras la app corra en segundo plano (verás una notificación).",
+                    fontSize = 11.sp,
+                    color = Color(0xFF4A148C)
+                )
+            }
+        }
     }
 }
