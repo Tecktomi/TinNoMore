@@ -26,7 +26,10 @@ fun AdminScreen(
     vm: AdminViewModel = viewModel()
 ) {
     val allUsers by vm.allUsers.collectAsState(initial = emptyList())
+    val specialists by vm.specialists.collectAsState(initial = emptyList())
+    val patientSpecialistIds by vm.patientSpecialistIds.collectAsState(initial = emptyMap())
     var toDelete by remember { mutableStateOf<User?>(null) }
+    var toAssign by remember { mutableStateOf<User?>(null) }
 
     Scaffold(
         topBar = {
@@ -74,7 +77,11 @@ fun AdminScreen(
             // Lista de usuarios
             LazyColumn {
                 items(allUsers, key = { it.id }) { u ->
-                    UserCard(u = u, onDelete = { toDelete = u })
+                    UserCard(
+                        u = u,
+                        onDelete = { toDelete = u },
+                        onAssign = { toAssign = u }.takeIf { u.role == UserRole.PATIENT }
+                    )
                 }
             }
         }
@@ -97,6 +104,47 @@ fun AdminScreen(
             }
         )
     }
+
+    // Diálogo de asignación de especialista(s) a un paciente
+    toAssign?.let { patient ->
+        val assignedIds = patientSpecialistIds[patient.id].orEmpty()
+        AlertDialog(
+            onDismissRequest = { toAssign = null },
+            title = { Text("Asignar especialista a ${patient.name}") },
+            text = {
+                if (specialists.isEmpty()) {
+                    Text("No hay especialistas registrados en el sistema.", color = Color.Gray)
+                } else {
+                    Column {
+                        specialists.forEach { s ->
+                            val isAssigned = assignedIds.contains(s.id)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = isAssigned,
+                                    onCheckedChange = { checked ->
+                                        if (checked) vm.assignSpecialist(patient.id, s.id)
+                                        else vm.unassignSpecialist(patient.id, s.id)
+                                    }
+                                )
+                                Column {
+                                    Text(s.name, fontWeight = FontWeight.SemiBold)
+                                    Text(s.email, fontSize = 12.sp, color = Color.Gray)
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { toAssign = null }) { Text("Listo") }
+            }
+        )
+    }
 }
 
 @Composable
@@ -113,7 +161,7 @@ private fun RoleSummary(modifier: Modifier, label: String, count: Int, color: Co
 }
 
 @Composable
-private fun UserCard(u: User, onDelete: () -> Unit) {
+private fun UserCard(u: User, onDelete: () -> Unit, onAssign: (() -> Unit)? = null) {
     val roleColor = when (u.role) {
         UserRole.PATIENT    -> Color(0xFF1565C0)
         UserRole.SPECIALIST -> Color(0xFF00695C)
@@ -139,6 +187,11 @@ private fun UserCard(u: User, onDelete: () -> Unit) {
                         fontSize = 10.sp,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
+                }
+            }
+            if (onAssign != null) {
+                IconButton(onClick = onAssign) {
+                    Icon(Icons.Default.PersonAdd, "Asignar especialista", tint = MaterialTheme.colorScheme.primary)
                 }
             }
             IconButton(onClick = onDelete) {

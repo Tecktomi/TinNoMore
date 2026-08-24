@@ -11,9 +11,10 @@ import com.tinnomore.data.db.entity.*
         SymptomEntry::class,
         AudiometryProfile::class,
         CrisisRecord::class,
-        TherapySession::class
+        TherapySession::class,
+        PatientSpecialistAssignment::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -23,6 +24,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun symptomDao(): SymptomDao
     abstract fun audiometryDao(): AudiometryDao
     abstract fun crisisRecordDao(): CrisisRecordDao
+    abstract fun patientSpecialistAssignmentDao(): PatientSpecialistAssignmentDao
 
     companion object {
         @Volatile
@@ -68,13 +70,21 @@ abstract class AppDatabase : RoomDatabase() {
                     email = "paciente4@demo.com", password = "1234", role = UserRole.PATIENT)
 
             )
-            db.userDao().insert(
+            val specialistId1 = db.userDao().insert(
                 User(name = "Carlos Muñoz", rut = "11.111.111-1",
                     email = "especialista@demo.com", password = "1234", role = UserRole.SPECIALIST)
             )
             db.userDao().insert(
                 User(name = "Admin Sistema", rut = "00.000.000-0",
                     email = "admin@demo.com", password = "admin", role = UserRole.ADMIN)
+            )
+
+            // HU-05-1: pacientes asignados al especialista demo
+            db.patientSpecialistAssignmentDao().insert(
+                PatientSpecialistAssignment(patientId = patientId1, specialistId = specialistId1)
+            )
+            db.patientSpecialistAssignmentDao().insert(
+                PatientSpecialistAssignment(patientId = patientId2, specialistId = specialistId1)
             )
 
             // Síntomas de demostración para paciente 1

@@ -28,6 +28,11 @@ fun SpecialistHomeScreen(
     val searchQuery  by vm.searchQuery.collectAsState()
     val selected     by vm.selected.collectAsState()
 
+    // HU-05-1: cargar únicamente los pacientes asignados al especialista con sesión iniciada
+    LaunchedEffect(specialist?.id) {
+        specialist?.id?.let { vm.loadPatients(it) }
+    }
+
     // HU-05-2: si hay paciente seleccionado, mostrar detalle
     if (selected != null) {
         PatientDetailScreen(
@@ -115,7 +120,7 @@ fun SpecialistHomeScreen(
                 }
                 filtered.isEmpty() -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No hay pacientes registrados.", color = Color.Gray)
+                        Text("No tienes pacientes asignados.", color = Color.Gray)
                     }
                 }
                 else -> {

@@ -6,8 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.tinnomore.data.db.AppDatabase
 import com.tinnomore.data.db.entity.SymptomEntry
 import com.tinnomore.data.db.entity.User
+import com.tinnomore.data.repository.AssignmentRepository
 import com.tinnomore.data.repository.SymptomRepository
-import com.tinnomore.data.repository.UserRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,8 +31,10 @@ data class PatientWithSymptoms(
  */
 class SpecialistViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val userRepo = UserRepository(AppDatabase.getDatabase(application).userDao())
     private val symptomRepo = SymptomRepository(AppDatabase.getDatabase(application).symptomDao())
+    private val assignmentRepo = AssignmentRepository(
+        AppDatabase.getDatabase(application).patientSpecialistAssignmentDao()
+    )
 
     // ─── Lista de pacientes ──────────────────────────────────────────────────
 
@@ -50,11 +52,19 @@ class SpecialistViewModel(application: Application) : AndroidViewModel(applicati
     val selected: StateFlow<PatientWithSymptoms?> = _selected.asStateFlow()
 
     private var symptomJob: Job? = null
+    private var patientsJob: Job? = null
+    private var loadedSpecialistId: Long? = null
 
-    init {
-        // HU-05-1: cargar pacientes al inicializar
-        viewModelScope.launch {
-            userRepo.getAllPatients().collect { list ->
+    /**
+     * HU-05-1: carga únicamente los pacientes asignados al especialista con sesión iniciada.
+     * Se debe llamar una vez que se conoce el id del especialista logueado.
+     */
+    fun loadPatients(specialistId: Long) {
+        if (loadedSpecialistId == specialistId) return
+        loadedSpecialistId = specialistId
+        patientsJob?.cancel()
+        patientsJob = viewModelScope.launch {
+            assignmentRepo.getPatientsForSpecialist(specialistId).collect { list ->
                 _allPatients.value = list
                 applyFilter()
             }
@@ -90,6 +100,8 @@ class SpecialistViewModel(application: Application) : AndroidViewModel(applicati
     // ─── HU-05-2: seleccionar paciente → cargar evolución y síntomas ─────────
 
     fun selectPatient(patient: User) {
+        // Acceso seguro: solo se puede abrir el perfil de un paciente asignado
+        if (_allPatients.value.none { it.id == patient.id }) return
         symptomJob?.cancel()
         symptomJob = viewModelScope.launch {
             symptomRepo.getSymptomsForPatient(patient.id).collect { symptoms ->
