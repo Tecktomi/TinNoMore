@@ -4,19 +4,24 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tinnomore.data.db.AppDatabase
+import com.tinnomore.data.db.entity.CrisisRecord
 import com.tinnomore.data.db.entity.SymptomEntry
 import com.tinnomore.data.db.entity.User
 import com.tinnomore.data.repository.AssignmentRepository
+import com.tinnomore.data.repository.CrisisRepository
 import com.tinnomore.data.repository.SymptomRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 data class PatientWithSymptoms(
     val patient: User,
-    val symptoms: List<SymptomEntry>
+    val symptoms: List<SymptomEntry>,
+    /** HU-05-2: exposición a ruido (decibelios máximos registrados durante crisis) */
+    val crisisRecords: List<CrisisRecord> = emptyList()
 )
 
 /**
@@ -32,6 +37,7 @@ data class PatientWithSymptoms(
 class SpecialistViewModel(application: Application) : AndroidViewModel(application) {
 
     private val symptomRepo = SymptomRepository(AppDatabase.getDatabase(application).symptomDao())
+    private val crisisRepo = CrisisRepository(AppDatabase.getDatabase(application).crisisRecordDao())
     private val assignmentRepo = AssignmentRepository(
         AppDatabase.getDatabase(application).patientSpecialistAssignmentDao()
     )
@@ -104,9 +110,11 @@ class SpecialistViewModel(application: Application) : AndroidViewModel(applicati
         if (_allPatients.value.none { it.id == patient.id }) return
         symptomJob?.cancel()
         symptomJob = viewModelScope.launch {
-            symptomRepo.getSymptomsForPatient(patient.id).collect { symptoms ->
-                _selected.value = PatientWithSymptoms(patient, symptoms)
-            }
+            symptomRepo.getSymptomsForPatient(patient.id)
+                .combine(crisisRepo.getCrisisRecordsForPatient(patient.id)) { symptoms, crises ->
+                    PatientWithSymptoms(patient, symptoms, crises)
+                }
+                .collect { _selected.value = it }
         }
     }
 
@@ -116,9 +124,11 @@ class SpecialistViewModel(application: Application) : AndroidViewModel(applicati
         val patient = _selected.value?.patient ?: return
         symptomJob?.cancel()
         symptomJob = viewModelScope.launch {
-            symptomRepo.getSymptomsForPatientBetween(patient.id, from, to).collect { symptoms ->
-                _selected.value = PatientWithSymptoms(patient, symptoms)
-            }
+            symptomRepo.getSymptomsForPatientBetween(patient.id, from, to)
+                .combine(crisisRepo.getCrisisRecordsForPatientBetween(patient.id, from, to)) { symptoms, crises ->
+                    PatientWithSymptoms(patient, symptoms, crises)
+                }
+                .collect { _selected.value = it }
         }
     }
 

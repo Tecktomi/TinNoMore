@@ -177,22 +177,102 @@ fun PatientDetailScreen(
 
                 val fmt = SimpleDateFormat("dd/MM/yy HH:mm", Locale.getDefault())
                 data.symptoms.take(15).forEach { s ->
+                    Column(modifier = Modifier.padding(vertical = 5.dp)) {
+                        Row(
+                            modifier              = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment     = Alignment.CenterVertically
+                        ) {
+                            Text(fmt.format(Date(s.timestamp)), fontSize = 13.sp, color = Color.Gray)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Intensidad: ", fontSize = 13.sp)
+                                val col = when {
+                                    s.intensity <= 3 -> Color(0xFF2E7D32)
+                                    s.intensity <= 6 -> Color(0xFFE65100)
+                                    else             -> Color(0xFFD32F2F)
+                                }
+                                Surface(color = col, shape = MaterialTheme.shapes.extraSmall) {
+                                    Text(
+                                        "${s.intensity}/10",
+                                        color    = Color.White,
+                                        fontSize = 12.sp,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                        // HU-05-2: impacto en sueño y concentración
+                        if (s.sleepImpact != null || s.concentrationImpact != null) {
+                            Row(modifier = Modifier.padding(top = 3.dp)) {
+                                s.sleepImpact?.let {
+                                    Text("Sueño: $it/10", fontSize = 12.sp, color = Color.Gray)
+                                    Spacer(Modifier.width(12.dp))
+                                }
+                                s.concentrationImpact?.let {
+                                    Text("Concentración: $it/10", fontSize = 12.sp, color = Color.Gray)
+                                }
+                            }
+                        }
+                    }
+                    HorizontalDivider()
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            // ── Exposición a ruido (a partir de registros de crisis) ─────
+            Text("Exposición a ruido", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Spacer(Modifier.height(8.dp))
+
+            if (data.crisisRecords.isEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().height(80.dp),
+                    colors   = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))
+                ) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("Sin registros de crisis/exposición en este período", color = Color.Gray, fontSize = 13.sp, textAlign = TextAlign.Center)
+                    }
+                }
+            } else {
+                val maxDb = data.crisisRecords.maxOf { it.maxDecibels }
+                val avgDb = data.crisisRecords.map { it.maxDecibels }.average()
+
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StatBadge(Modifier.weight(1f), "Episodios", "${data.crisisRecords.size}", MaterialTheme.colorScheme.primary)
+                    StatBadge(Modifier.weight(1f), "dB promedio", String.format(Locale.getDefault(), "%.0f", avgDb), Color(0xFFE65100))
+                    StatBadge(Modifier.weight(1f), "dB máximo", String.format(Locale.getDefault(), "%.0f", maxDb), Color(0xFFD32F2F))
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                val fmtCrisis = SimpleDateFormat("dd/MM/yy HH:mm", Locale.getDefault())
+                data.crisisRecords.take(15).forEach { c ->
                     Row(
                         modifier              = Modifier.fillMaxWidth().padding(vertical = 5.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment     = Alignment.CenterVertically
                     ) {
-                        Text(fmt.format(Date(s.timestamp)), fontSize = 13.sp, color = Color.Gray)
+                        Text(fmtCrisis.format(Date(c.timestamp)), fontSize = 13.sp, color = Color.Gray)
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Intensidad: ", fontSize = 13.sp)
+                            if (c.therapyModified) {
+                                Surface(color = Color(0xFFE65100), shape = MaterialTheme.shapes.extraSmall) {
+                                    Text(
+                                        "Terapia ajustada",
+                                        color    = Color.White,
+                                        fontSize = 11.sp,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                                Spacer(Modifier.width(6.dp))
+                            }
                             val col = when {
-                                s.intensity <= 3 -> Color(0xFF2E7D32)
-                                s.intensity <= 6 -> Color(0xFFE65100)
-                                else             -> Color(0xFFD32F2F)
+                                c.maxDecibels < 70f -> Color(0xFF2E7D32)
+                                c.maxDecibels < 85f -> Color(0xFFE65100)
+                                else                -> Color(0xFFD32F2F)
                             }
                             Surface(color = col, shape = MaterialTheme.shapes.extraSmall) {
                                 Text(
-                                    "${s.intensity}/10",
+                                    "${c.maxDecibels.toInt()} dB",
                                     color    = Color.White,
                                     fontSize = 12.sp,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)

@@ -11,6 +11,14 @@ interface CrisisRecordDao {
     @Query("SELECT * FROM crisis_records WHERE patientId = :patientId ORDER BY timestamp DESC")
     fun getCrisisRecordsForPatient(patientId: Long): Flow<List<CrisisRecord>>
 
+    /** HU-05-3: filtro por rango de fechas para el especialista (exposición a ruido) */
+    @Query("""
+        SELECT * FROM crisis_records
+        WHERE patientId = :patientId AND timestamp BETWEEN :from AND :to
+        ORDER BY timestamp DESC
+    """)
+    fun getCrisisRecordsForPatientBetween(patientId: Long, from: Long, to: Long): Flow<List<CrisisRecord>>
+
     @Insert
     suspend fun insert(record: CrisisRecord): Long
 }

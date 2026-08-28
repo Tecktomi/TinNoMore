@@ -128,6 +128,23 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                 )
             }
+
+            // Exposición a ruido / crisis de demostración para paciente 1
+            listOf(
+                Triple(78f, false, now - 4 * day),
+                Triple(92f, true, now - 2 * day)
+            ).forEach { (db_, modified, ts) ->
+                db.crisisRecordDao().insert(
+                    CrisisRecord(
+                        patientId = patientId1,
+                        timestamp = ts,
+                        audioFilePath = null,
+                        maxDecibels = db_,
+                        therapyModified = modified,
+                        modifiedIntensity = if (modified) 0.6f else null
+                    )
+                )
+            }
         }
     }
 }
