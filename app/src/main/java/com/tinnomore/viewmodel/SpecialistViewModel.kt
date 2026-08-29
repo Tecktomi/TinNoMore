@@ -5,10 +5,12 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tinnomore.data.db.AppDatabase
 import com.tinnomore.data.db.entity.CrisisRecord
+import com.tinnomore.data.db.entity.MedicationEntry
 import com.tinnomore.data.db.entity.SymptomEntry
 import com.tinnomore.data.db.entity.User
 import com.tinnomore.data.repository.AssignmentRepository
 import com.tinnomore.data.repository.CrisisRepository
+import com.tinnomore.data.repository.MedicationRepository
 import com.tinnomore.data.repository.SymptomRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,7 +23,14 @@ data class PatientWithSymptoms(
     val patient: User,
     val symptoms: List<SymptomEntry>,
     /** HU-05-2: exposición a ruido (decibelios máximos registrados durante crisis) */
-    val crisisRecords: List<CrisisRecord> = emptyList()
+    val crisisRecords: List<CrisisRecord> = emptyList(),
+    /** HU-05-2: medicamentos que el paciente registró haber tomado */
+    val medications: List<MedicationEntry> = emptyList(),
+    /**
+     * HU-05-3: rango de fechas que el especialista aplicó (inicio, fin), tal como lo
+     * eligió en el selector. Es null cuando no hay filtro activo.
+     */
+    val dateFilter: Pair<Long, Long>? = null
 )
 
 /**
@@ -38,6 +47,7 @@ class SpecialistViewModel(application: Application) : AndroidViewModel(applicati
 
     private val symptomRepo = SymptomRepository(AppDatabase.getDatabase(application).symptomDao())
     private val crisisRepo = CrisisRepository(AppDatabase.getDatabase(application).crisisRecordDao())
+    private val medicationRepo = MedicationRepository(AppDatabase.getDatabase(application).medicationDao())
     private val assignmentRepo = AssignmentRepository(
         AppDatabase.getDatabase(application).patientSpecialistAssignmentDao()
     )
@@ -110,25 +120,35 @@ class SpecialistViewModel(application: Application) : AndroidViewModel(applicati
         if (_allPatients.value.none { it.id == patient.id }) return
         symptomJob?.cancel()
         symptomJob = viewModelScope.launch {
-            symptomRepo.getSymptomsForPatient(patient.id)
-                .combine(crisisRepo.getCrisisRecordsForPatient(patient.id)) { symptoms, crises ->
-                    PatientWithSymptoms(patient, symptoms, crises)
-                }
-                .collect { _selected.value = it }
+            combine(
+                symptomRepo.getSymptomsForPatient(patient.id),
+                crisisRepo.getCrisisRecordsForPatient(patient.id),
+                medicationRepo.getMedicationsForPatient(patient.id)
+            ) { symptoms, crises, medications ->
+                PatientWithSymptoms(patient, symptoms, crises, medications)
+            }.collect { _selected.value = it }
         }
     }
 
     // ─── HU-05-3: filtro por fechas ──────────────────────────────────────────
 
+    /**
+     * @param from inicio del rango elegido por el especialista
+     * @param to   fin del rango elegido; se consulta hasta el final de ese día
+     */
     fun filterByDateRange(from: Long, to: Long) {
         val patient = _selected.value?.patient ?: return
+        // +1 día para incluir completo el día final seleccionado
+        val toEndOfDay = to + 86_400_000L
         symptomJob?.cancel()
         symptomJob = viewModelScope.launch {
-            symptomRepo.getSymptomsForPatientBetween(patient.id, from, to)
-                .combine(crisisRepo.getCrisisRecordsForPatientBetween(patient.id, from, to)) { symptoms, crises ->
-                    PatientWithSymptoms(patient, symptoms, crises)
-                }
-                .collect { _selected.value = it }
+            combine(
+                symptomRepo.getSymptomsForPatientBetween(patient.id, from, toEndOfDay),
+                crisisRepo.getCrisisRecordsForPatientBetween(patient.id, from, toEndOfDay),
+                medicationRepo.getMedicationsForPatientBetween(patient.id, from, toEndOfDay)
+            ) { symptoms, crises, medications ->
+                PatientWithSymptoms(patient, symptoms, crises, medications, dateFilter = from to to)
+            }.collect { _selected.value = it }
         }
     }
 

@@ -12,9 +12,10 @@ import com.tinnomore.data.db.entity.*
         AudiometryProfile::class,
         CrisisRecord::class,
         TherapySession::class,
-        PatientSpecialistAssignment::class
+        PatientSpecialistAssignment::class,
+        MedicationEntry::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -25,6 +26,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun audiometryDao(): AudiometryDao
     abstract fun crisisRecordDao(): CrisisRecordDao
     abstract fun patientSpecialistAssignmentDao(): PatientSpecialistAssignmentDao
+    abstract fun medicationDao(): MedicationDao
 
     companion object {
         @Volatile
@@ -145,6 +147,31 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                 )
             }
+
+            // Medicamentos de demostración
+            listOf(
+                Triple("Betahistina", "16 mg", now - 3 * day),
+                Triple("Melatonina",  "3 mg",  now - 1 * day)
+            ).forEach { (medName, medDose, ts) ->
+                db.medicationDao().insert(
+                    MedicationEntry(
+                        patientId = patientId1,
+                        timestamp = ts,
+                        name      = medName,
+                        dose      = medDose,
+                        notes     = null
+                    )
+                )
+            }
+            db.medicationDao().insert(
+                MedicationEntry(
+                    patientId = patientId2,
+                    timestamp = now - 2 * day,
+                    name      = "Ginkgo biloba",
+                    dose      = "120 mg",
+                    notes     = "Indicado por especialista"
+                )
+            )
         }
     }
 }

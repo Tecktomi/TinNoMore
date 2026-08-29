@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.tinnomore.data.db.AppDatabase
 import com.tinnomore.data.db.entity.SymptomEntry
 import com.tinnomore.data.repository.SymptomRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,8 +40,14 @@ class SymptomViewModel(application: Application) : AndroidViewModel(application)
     private val _toast = MutableStateFlow<Pair<Boolean, String>?>(null) // (isSuccess, message)
     val toast: StateFlow<Pair<Boolean, String>?> = _toast.asStateFlow()
 
+    private var loadJob: Job? = null
+
     fun loadSymptoms(patientId: Long) {
-        viewModelScope.launch {
+        // El Flow de Room nunca termina: cancelar el anterior evita acumular un
+        // colector por cada llamada (Inicio y Síntomas comparten este ViewModel y
+        // ambos invocan loadSymptoms al entrar en composición).
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             repository.getSymptomsForPatient(patientId).collect { list ->
                 _uiState.value = SymptomUiState.Success(list)
             }

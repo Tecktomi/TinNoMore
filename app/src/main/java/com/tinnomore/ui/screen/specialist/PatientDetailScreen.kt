@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.FilterListOff
+import androidx.compose.material.icons.filled.Medication
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,7 +38,10 @@ fun PatientDetailScreen(
 ) {
     var showDateRangePicker by remember { mutableStateOf(false) }
     val dateRangePickerState = rememberDateRangePickerState()
+    // El DateRangePicker entrega medianoche UTC; se formatea en UTC para mostrar
+    // exactamente el día que eligió el especialista, sin desfase por zona horaria.
     val fmtDate = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        .apply { timeZone = TimeZone.getTimeZone("UTC") }
 
     if (showDateRangePicker) {
         DatePickerDialog(
@@ -48,8 +52,7 @@ fun PatientDetailScreen(
                         val start = dateRangePickerState.selectedStartDateMillis
                         val end = dateRangePickerState.selectedEndDateMillis
                         if (start != null && end != null) {
-                            // end + 86400000 para incluir el día final completo
-                            vm.filterByDateRange(start, end + 86_400_000L)
+                            vm.filterByDateRange(start, end)
                         }
                         showDateRangePicker = false
                     },
@@ -93,8 +96,11 @@ fun PatientDetailScreen(
                     IconButton(onClick = { showDateRangePicker = true }) {
                         Icon(Icons.Default.DateRange, "Filtrar fechas", tint = Color.White)
                     }
-                    IconButton(onClick = { vm.clearFilter() }) {
-                        Icon(Icons.Default.FilterListOff, "Quitar filtro", tint = Color.White)
+                    // Solo tiene sentido ofrecer "quitar filtro" si hay uno aplicado
+                    if (data.dateFilter != null) {
+                        IconButton(onClick = { vm.clearFilter() }) {
+                            Icon(Icons.Default.FilterListOff, "Quitar filtro", tint = Color.White)
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -122,14 +128,11 @@ fun PatientDetailScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // Indicador de filtro activo
-            if (data.symptoms.isNotEmpty()) {
-                val startStr = fmtDate.format(Date(data.symptoms.minOf { it.timestamp }))
-                val endStr = fmtDate.format(Date(data.symptoms.maxOf { it.timestamp }))
-                
+            // Indicador de filtro activo: solo cuando el especialista aplicó un rango
+            data.dateFilter?.let { (from, to) ->
                 AssistChip(
                     onClick = { vm.clearFilter() },
-                    label = { Text("Rango: $startStr - $endStr") },
+                    label = { Text("Rango: ${fmtDate.format(Date(from))} - ${fmtDate.format(Date(to))}") },
                     leadingIcon = { Icon(Icons.Default.FilterList, null, modifier = Modifier.size(18.dp)) },
                     trailingIcon = { Icon(Icons.Default.Clear, "Quitar filtro", modifier = Modifier.size(18.dp)) },
                     modifier = Modifier.padding(bottom = 8.dp)
@@ -279,6 +282,51 @@ fun PatientDetailScreen(
                                 )
                             }
                         }
+                    }
+                    HorizontalDivider()
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            // ── Medicamentos registrados por el paciente ─────────────────
+            Text("Medicamentos", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Spacer(Modifier.height(8.dp))
+
+            if (data.medications.isEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().height(80.dp),
+                    colors   = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))
+                ) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            "Sin medicamentos registrados en este período",
+                            color = Color.Gray, fontSize = 13.sp, textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            } else {
+                val fmtMed = SimpleDateFormat("dd/MM/yy HH:mm", Locale.getDefault())
+                data.medications.take(15).forEach { m ->
+                    Row(
+                        modifier          = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Medication,
+                            contentDescription = null,
+                            tint     = Color(0xFF00695C),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(m.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            val detail = listOfNotNull(m.dose, m.notes).joinToString(" · ")
+                            if (detail.isNotBlank()) {
+                                Text(detail, fontSize = 12.sp, color = Color.Gray)
+                            }
+                        }
+                        Text(fmtMed.format(Date(m.timestamp)), fontSize = 12.sp, color = Color.Gray)
                     }
                     HorizontalDivider()
                 }

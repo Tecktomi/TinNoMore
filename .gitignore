@@ -3,3 +3,6 @@
 build/
 app/build/
 local.properties
+
+# Capturas de pantalla de pruebas manuales en la raíz del proyecto
+/*.png

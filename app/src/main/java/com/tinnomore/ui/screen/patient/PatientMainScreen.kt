@@ -102,7 +102,7 @@ fun PatientMainScreen(
                         onAudiometryClick = { selectedTab = PatientTab.AUDIOMETRY },
                         onLogout         = onLogout
                     )
-                    PatientTab.SYMPTOMS   -> SymptomScreen(patientId = patientId, onBack = {})
+                    PatientTab.SYMPTOMS   -> PatientRecordsScreen(patientId = patientId)
                     PatientTab.AUDIOMETRY -> AudiometryScreen(patientId = patientId, onBack = {})
                     PatientTab.NOTCH      -> NotchTherapyScreen(
                         patientId = patientId,

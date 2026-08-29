@@ -31,6 +31,7 @@ fun SymptomScreen(
     patientId: Long,
     onBack: () -> Unit,
     showBackButton: Boolean = false,
+    topTabs: (@Composable () -> Unit)? = null,
     vm: SymptomViewModel = viewModel()
 ) {
     val uiState by vm.uiState.collectAsState()
@@ -50,20 +51,23 @@ fun SymptomScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Registro de Síntomas") },
-                navigationIcon = {
-                    if (showBackButton) {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.Default.ArrowBack, "Volver", tint = Color.White)
+            Column {
+                TopAppBar(
+                    title = { Text(if (topTabs != null) "Mis Registros" else "Registro de Síntomas") },
+                    navigationIcon = {
+                        if (showBackButton) {
+                            IconButton(onClick = onBack) {
+                                Icon(Icons.Default.ArrowBack, "Volver", tint = Color.White)
+                            }
                         }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor    = SymptomPrimary,
-                    titleContentColor = Color.White
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor    = SymptomPrimary,
+                        titleContentColor = Color.White
+                    )
                 )
-            )
+                topTabs?.invoke()
+            }
         },
         floatingActionButton = {
             FloatingActionButton(
